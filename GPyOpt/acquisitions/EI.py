@@ -4,6 +4,8 @@
 from .base import AcquisitionBase
 from ..util.general import get_quantiles
 
+import numpy as np
+
 class AcquisitionEI(AcquisitionBase):
     """
     Expected improvement acquisition function
@@ -43,6 +45,9 @@ class AcquisitionEI(AcquisitionBase):
         """
         Computes the Expected Improvement and its derivative (has a very easy derivative!)
         """
+        if np.any(np.isnan(x)):
+            print('x value: ', x)
+        
         fmin = self.model.get_fmin()
         m, s, dmdx, dsdx = self.model.predict_withGradients(x)
         phi, Phi, u = get_quantiles(self.jitter, fmin, m, s)

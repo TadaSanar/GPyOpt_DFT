@@ -7,9 +7,14 @@
 import pandas as pd  # Added
 import numpy as np  # Added
 import GPy  # Added
+import matplotlib # Added
+import matplotlib.pyplot as plt # Added
+from plotting_v2 import triangleplot # Added
 
 from .base import AcquisitionBase
 from ..util.general import get_quantiles
+
+
 
 class AcquisitionEI_DFT(AcquisitionBase):
     """
@@ -27,17 +32,30 @@ class AcquisitionEI_DFT(AcquisitionBase):
 
     analytical_gradient_prediction = True
 
-    def __init__(self, model, space, files, optimizer=None, cost_withGradients=None, jitter=0.01):
+    def __init__(self, model, space, files, data_fusion_target_variable=None, optimizer=None, cost_withGradients=None, jitter=0.01, lengthscale = 0.03, variance = 2, beta = 0.025, midpoint = 0, data_fusion_input_variables = None):
         self.optimizer = optimizer
+        self.data_fusion_target_variable = data_fusion_target_variable
+        self.files = files
+        print(files)
         super(AcquisitionEI_DFT, self).__init__(model, space, optimizer, cost_withGradients=cost_withGradients)
         self.jitter = jitter
-        self.constraint_model = GP_model(files)  # Added
-        self.files = files
-    
+        self.variance = variance
+        self.lengthscale = lengthscale
+        self.beta = beta
+        self.midpoint = midpoint
+        self.data_fusion_input_variables = data_fusion_input_variables
+        self.constraint_model = GP_model(files, data_fusion_target_variable = data_fusion_target_variable, lengthscale = lengthscale, variance = variance, data_fusion_input_variables = data_fusion_input_variables)  # Added
+        if len(data_fusion_input_variables) == 3:
+            if data_fusion_target_variable == 'dGmix (ev/f.u.)':
+                plot_P(self.constraint_model, beta = self.beta, data_type = 'dft', midpoint = self.midpoint)
+            if data_fusion_target_variable == 'Yellowness':
+                plot_P(self.constraint_model, beta = self.beta, data_type = 'yellowness', midpoint = self.midpoint)
+        else:
+            print('I do not know how to plot this data fusion variable.')
 
     @staticmethod
-    def fromConfig(model, space, files, optimizer, cost_withGradients, config):
-        return AcquisitionEI_DFT(model, space, files, optimizer, cost_withGradients, jitter=config['jitter'])
+    def fromConfig(model, space, files, target_variable, optimizer, cost_withGradients, config):
+        return AcquisitionEI_DFT(model, space, files, target_variable, optimizer, cost_withGradients, jitter=config['jitter'])
 
     def _compute_acq(self, x):
         """
@@ -48,7 +66,7 @@ class AcquisitionEI_DFT(AcquisitionBase):
         phi, Phi, u = get_quantiles(self.jitter, fmin, m, s)
         f_acqu = s * (u * Phi + phi)
         
-        mean, prob, conf_interval = mean_and_propability(x, self.constraint_model) # Added
+        mean, prob, conf_interval = calc_P(x, self.constraint_model, self.beta, self.midpoint) # Added
         f_acqu = f_acqu * prob # Added
         #print('Acq!') # Added
         return f_acqu
@@ -63,16 +81,128 @@ class AcquisitionEI_DFT(AcquisitionBase):
         f_acqu = s * (u * Phi + phi)
         df_acqu = dsdx * phi - Phi * dmdx
         #print('Acq-grad!')  # Added
-        mean, prob, conf_interval = mean_and_propability(x, self.constraint_model) # Added
-        print('x='+str(x)+', acqu='+str(f_acqu)+', grad='+str(df_acqu))
+        if np.any(np.isnan(x)):
+            print('x value: ', x)
+        mean, prob, conf_interval = calc_P(x, self.constraint_model, self.beta, self.midpoint) # Added
+        #print('x='+str(x)+', acqu='+str(f_acqu)+', grad='+str(df_acqu))
         f_acqu = f_acqu * prob # Added
         df_acqu = df_acqu * prob # Added
-        print('P='+str(prob)+'-->acqu='+str(f_acqu)+', grad='+str(df_acqu))
+        #print('P='+str(prob)+'-->acqu='+str(f_acqu)+', grad='+str(df_acqu))
         return f_acqu, df_acqu
 
+# Added the rest of the file on 2021/11/02.
+def GP_model(files, data_fusion_target_variable = 'dGmix (ev/f.u.)', lengthscale = 0.03, variance = 2, data_fusion_input_variables = ['CsPbI', 'MAPbI', 'FAPbI']):
+    
+    input_data = []
+    for i in range(len(files)):
+        input_data.append(pd.read_csv(files[i]))
+    input_data = pd.concat(input_data)
+    #print(input_data)
+    
+    X = input_data[data_fusion_input_variables] # This is 3D input
+    Y = input_data[[data_fusion_target_variable]] # Negative value: stable phase. Uncertainty = 0.025 
+    X = X.values # Optimization did not succeed without type conversion.
+    Y = Y.values
+    #print(X,Y)
+    
+    # RBF kernel
+    kernel = GPy.kern.RBF(input_dim=X.shape[1], lengthscale=lengthscale, variance=variance)
+    model = GPy.models.GPRegression(X,Y,kernel)
+    
+    # optimize and plot
+    model.optimize(messages=True,max_f_eval = 100)
+    
+    
+    return model
+    
+def calc_P(points, GP_model, beta = 0.025, midpoint = 0):
+    
+    #print(points)
+    mean = GP_model.predict_noiseless(points)
+    mean = mean[0] # TO DO: issue here with dimensions?
+    #print(mean)
+    conf_interval = GP_model.predict_quantiles(np.array(points)) # 95% confidence interval by default. TO DO: Do we want to use this for something?
+
+    propability = 1/(1+np.exp((mean-midpoint)/beta)) # Inverted because the negative Gibbs energies are the ones that are stable.
+    #print(propability)
+    return mean, propability, conf_interval
+
+
+def create_ternary_grid():
+
+    ### This grid is used for sampling+plotting the posterior mean and std_dv + acq function.
+    a = np.arange(0.0,1.0, 0.005)
+    xt, yt, zt = np.meshgrid(a,a,a, sparse=False)
+    points = np.transpose([xt.ravel(), yt.ravel(), zt.ravel()])
+    points = points[abs(np.sum(points, axis=1)-1)<0.005]
+    
+    return points
+
+def plot_surf_mean(points, posterior_mean, lims, axis_scale = 1,
+                   cbar_label = r'$I_{c}(\theta)$ (px$\cdot$h)',
+                   saveas = 'Ic-no-grid'):
+    
+    norm = matplotlib.colors.Normalize(vmin=lims[0][0], vmax=lims[0][1])    
+    y_data = posterior_mean/axis_scale
+    plot_surf(points, y_data, norm, cbar_label = cbar_label, saveas = saveas)
+
+def plot_surf(points, y_data, norm, cmap = 'RdBu_r', cbar_label = '',
+              saveas = 'Triangle_surf'):
+
+    print(y_data.shape, points.shape)
+    print(norm)
+    print(cmap)
+    triangleplot(points, y_data, norm, cmap = cmap,
+                 cbar_label = cbar_label, saveas = saveas)
+
+
+def plot_P(GP_model, beta = 0.025, data_type = 'dft', midpoint = 0):
+        
+    points = create_ternary_grid()
+    lims = [[0,1], [0,1]] # For mean and std. Std lims are not actually used for P.
+    
+    if data_type == 'stability':
+        cbar_label_mean = r'$P_{Ic}$'
+        saveas_mean = 'P-Ic-no-grid' + np.datetime_as_string(np.datetime64('now'))
+    elif data_type == 'dft':
+        cbar_label_mean = r'$P_{phasestable}$'
+        saveas_mean = 'P-dGmix-no-grid' + np.datetime_as_string(np.datetime64('now'))
+    elif data_type == 'uniformity':
+        cbar_label_mean = r'P_{uniform}'
+        saveas_mean = 'P-Uniformity-no-grid' + np.datetime_as_string(np.datetime64('now'))
+    elif data_type == 'yellowness':
+        cbar_label_mean = r'$P_{dark}$'
+        saveas_mean = 'P-Yellowness-no-grid-' + np.datetime_as_string(np.datetime64('now'))
+    else:
+        cbar_label_mean = r'P'
+        saveas_mean = 'P-no-grid'
+
+    mean, propability, conf_interval = calc_P(points, GP_model, beta = beta, midpoint = midpoint)
+    print(propability)
+    
+    #plot_surf_mean(points, propability, lims, axis_scale = 1.0,
+    #               cbar_label = cbar_label_mean, saveas = saveas_mean, cmap = 'RdBu')
+    
+    minP = np.min(propability)
+    maxP = np.max(propability)
+        
+    return minP, maxP
+
+
+'''def mean_and_propability(x, model):#, variables):
+    mean = model.predict_noiseless(x) # Manual: "This is most likely what you want to use for your predictions."
+    mean = mean[0] # TO DO: issue here with dimensions?
+    conf_interval = model.predict_quantiles(np.array(x)) # 95% confidence interval by default. TO DO: Do we want to use this for something?
+
+    propability = 1/(1+np.exp(mean/0.025)) # Inverted because the negative Gibbs energies are the ones that are stable.
+    
+    return mean, propability, conf_interval
+'''
+
+'''
 # Added the rest of the file.
 def GP_model(files):
-    file_CsFA_2 = files[0]
+    for i in file_CsFA_2 = files[0]
     file_FAMA_2 = files[1]
     file_CsMA_2 = files[2]
 
@@ -124,7 +254,7 @@ def mean_and_propability(x, model):#, variables):
     propability = 1/(1+np.exp(mean/0.025)) # Inverted because the negative Gibbs energies are the ones that are stable.
     #print(propability)
     return mean, propability, conf_interval
-
+'''
 # For testing of GP_model() and mean_and_propability():
 '''
 model = GP_model()

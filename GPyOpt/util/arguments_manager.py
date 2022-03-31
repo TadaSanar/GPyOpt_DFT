@@ -52,7 +52,12 @@ class ArgumentsManager(object):
         acquisition_jitter = self.kwargs.get('acquisition_jitter',0.01)
         acquisition_weight = self.kwargs.get('acquisition_weight',2)
         files = self.kwargs.get('files')
-    
+        data_fusion_target_variable = self.kwargs.get('data_fusion_target_variable')
+        lengthscale = self.kwargs.get('lengthscale')
+        variance = self.kwargs.get('variance')
+        beta = self.kwargs.get('beta')
+        midpoint = self.kwargs.get('midpoint')
+        data_fusion_input_variables = self.kwargs.get('data_fusion_input_variables')
 
         # --- Choose the acquisition
         if acquisition_type is  None or acquisition_type =='EI':
@@ -74,7 +79,7 @@ class ArgumentsManager(object):
             return AcquisitionLCB_MCMC(model, space, acquisition_optimizer, None, acquisition_weight)
 
         elif acquisition_type == 'EI_DFT':
-            return AcquisitionEI_DFT(model, space, files, acquisition_optimizer, cost_withGradients, acquisition_jitter)
+            return AcquisitionEI_DFT(model, space, files, data_fusion_target_variable, acquisition_optimizer, cost_withGradients, acquisition_jitter, lengthscale, variance, beta, midpoint, data_fusion_input_variables)
         else:
             raise Exception('Invalid acquisition selected.')
 
