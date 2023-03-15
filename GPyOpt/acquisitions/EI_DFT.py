@@ -32,30 +32,77 @@ class AcquisitionEI_DFT(AcquisitionBase):
 
     analytical_gradient_prediction = True
 
-    def __init__(self, model, space, files, data_fusion_target_variable=None, optimizer=None, cost_withGradients=None, jitter=0.01, lengthscale = 0.03, variance = 2, beta = 0.025, midpoint = 0, data_fusion_input_variables = None):
+    def __init__(self, model, space, optimizer=None, cost_withGradients=None, jitter=0.01, ei_dft_params=None):
+        
         self.optimizer = optimizer
-        self.data_fusion_target_variable = data_fusion_target_variable
-        self.files = files
-        print(files)
         super(AcquisitionEI_DFT, self).__init__(model, space, optimizer, cost_withGradients=cost_withGradients)
         self.jitter = jitter
-        self.variance = variance
-        self.lengthscale = lengthscale
-        self.beta = beta
-        self.midpoint = midpoint
-        self.data_fusion_input_variables = data_fusion_input_variables
-        self.constraint_model = GP_model(files, data_fusion_target_variable = data_fusion_target_variable, lengthscale = lengthscale, variance = variance, data_fusion_input_variables = data_fusion_input_variables)  # Added
-        if len(data_fusion_input_variables) == 3:
-            if data_fusion_target_variable == 'dGmix (ev/f.u.)':
+        
+        if ei_dft_params is None:
+            
+            # Default values.
+            
+            ei_dft_params = {'df_data': None,
+                         'df_target_var': None,
+                         'df_input_var': None,
+                         'gp_lengthscale': 0.03,
+                         'gp_variance': 2,
+                         'p_beta': 0.025,
+                         'p_midpoint': 0
+                         }
+        
+        if 'df_data' in ei_dft_params:
+            self.data_fusion_data = ei_dft_params['df_data']
+        else:
+            self.data_fusion_data = None
+        
+        if 'df_target_var' in ei_dft_params:
+            self.data_fusion_target_variable = ei_dft_params['df_target_var']
+        else:
+            self.data_fusion_target_variable = None
+        
+        if 'df_input_var' in ei_dft_params:
+            self.data_fusion_input_variables = ei_dft_params['df_input_var']
+        else:
+            self.data_fusion_input_variables = None
+        
+        if 'gp_lengthscale' in ei_dft_params:
+            self.lengthscale = ei_dft_params['gp_lengthscale']
+        else:
+            self.lengthscale = 0.03
+            
+        if 'gp_variance' in ei_dft_params:
+            self.variance = ei_dft_params['gp_variance']
+        else:
+            self.variance = 2
+
+        if 'p_beta' in ei_dft_params:
+            self.beta = ei_dft_params['p_beta']
+        else:
+            self.beta = 0.025
+
+        if 'p_midpoint' in ei_dft_params:
+            self.midpoint = ei_dft_params['p_midpoint']
+        else:
+            self.beta = 0
+
+        self.constraint_model = GP_model(self.data_fusion_data,
+                                         data_fusion_target_variable = self.data_fusion_target_variable,
+                                         lengthscale = self.lengthscale,
+                                         variance = self.variance, 
+                                         data_fusion_input_variables = self.data_fusion_input_variables)  # Added
+        
+        if len(self.data_fusion_input_variables) == 3:
+            if self.data_fusion_target_variable == 'dGmix (ev/f.u.)':
                 plot_P(self.constraint_model, beta = self.beta, data_type = 'dft', midpoint = self.midpoint)
-            if data_fusion_target_variable == 'Yellowness':
+            if self.data_fusion_target_variable == 'Yellowness':
                 plot_P(self.constraint_model, beta = self.beta, data_type = 'yellowness', midpoint = self.midpoint)
         else:
             print('I do not know how to plot this data fusion variable.')
 
     @staticmethod
-    def fromConfig(model, space, files, target_variable, optimizer, cost_withGradients, config):
-        return AcquisitionEI_DFT(model, space, files, target_variable, optimizer, cost_withGradients, jitter=config['jitter'])
+    def fromConfig(model, space, optimizer, cost_withGradients, jitter, ei_dft_params, config):
+        return AcquisitionEI_DFT(model, space, optimizer, cost_withGradients, jitter)
 
     def _compute_acq(self, x):
         """
@@ -66,9 +113,10 @@ class AcquisitionEI_DFT(AcquisitionBase):
         phi, Phi, u = get_quantiles(self.jitter, fmin, m, s)
         f_acqu = s * (u * Phi + phi)
         
-        mean, prob, conf_interval = calc_P(x, self.constraint_model, self.beta, self.midpoint) # Added
+        _, prob, _ = calc_P(x, self.constraint_model, self.beta, self.midpoint) # Added
         f_acqu = f_acqu * prob # Added
-        #print('Acq!') # Added
+        
+        #print('Exploitation ', s*u*Phi*prob, ', exploration ', s*phi.prob) # Added
         return f_acqu
 
     def _compute_acq_withGradients(self, x):
@@ -80,61 +128,113 @@ class AcquisitionEI_DFT(AcquisitionBase):
         phi, Phi, u = get_quantiles(self.jitter, fmin, m, s)
         f_acqu = s * (u * Phi + phi)
         df_acqu = dsdx * phi - Phi * dmdx
-        #print('Acq-grad!')  # Added
+        
         if np.any(np.isnan(x)):
-            print('x value: ', x)
-        mean, prob, conf_interval = calc_P(x, self.constraint_model, self.beta, self.midpoint) # Added
-        #print('x='+str(x)+', acqu='+str(f_acqu)+', grad='+str(df_acqu))
+            print('x contains nan:\n ', x)
+        
+        _, prob, _ = calc_P(x, self.constraint_model, self.beta, self.midpoint) # Added
+        
+        #print('x='+str(x)+', acqu='+str(f_acqu)+', grad_acqu='+str(df_acqu),
+        #      ', P=' + str(prob))
+        
         f_acqu = f_acqu * prob # Added
-        df_acqu = df_acqu * prob # Added
-        #print('P='+str(prob)+'-->acqu='+str(f_acqu)+', grad='+str(df_acqu))
+        
+        d_prob = calc_gradient_of_P(x, self.constraint_model, self.beta,
+                                    self.midpoint, self.lengthscale)
+        
+        df_acqu = df_acqu * prob + f_acqu * d_prob
+        
+        #print('acqu_P='+str(f_acqu)+', grad_acqu_P='+str(df_acqu))
+        
         return f_acqu, df_acqu
 
+def calc_gradient_of_P(x, constraint_model, beta, midpoint, lengthscale):
+    
+    # Step for numerical gradient.
+    delta_x = lengthscale/1000
+    
+    g = np.empty(x.shape)
+    
+    for i in range(x.shape[1]):
+        
+        x_l = x.copy()
+        x_u = x.copy()
+        
+        x_l[:,i] = x_l[:,i] - delta_x
+        x_u[:,i] = x_u[:,i] + delta_x
+        
+        _, p_l, _ = calc_P(x_l, constraint_model, beta, midpoint)
+        #_, p_c, _ = calc_P(x, constraint_model, beta, midpoint)
+        _, p_u, _ = calc_P(x_u, constraint_model, beta, midpoint)
+        
+        g[:,i] =  np.ravel((p_u - p_l)/(2*delta_x))
+        
+        return g
+        
+
 # Added the rest of the file on 2021/11/02.
-def GP_model(files, data_fusion_target_variable = 'dGmix (ev/f.u.)', lengthscale = 0.03, variance = 2, data_fusion_input_variables = ['CsPbI', 'MAPbI', 'FAPbI']):
+def GP_model(data_fusion_data, data_fusion_target_variable = 'dGmix (ev/f.u.)', 
+             lengthscale = 0.03, variance = 2, 
+             data_fusion_input_variables = ['CsPbI', 'MAPbI', 'FAPbI']):
     
-    input_data = []
-    for i in range(len(files)):
-        input_data.append(pd.read_csv(files[i]))
-    input_data = pd.concat(input_data)
-    #print(input_data)
+    if data_fusion_data is None:
+        
+        model = None
+        
+    else:
     
-    X = input_data[data_fusion_input_variables] # This is 3D input
-    Y = input_data[[data_fusion_target_variable]] # Negative value: stable phase. Uncertainty = 0.025 
-    X = X.values # Optimization did not succeed without type conversion.
-    Y = Y.values
-    #print(X,Y)
-    
-    # RBF kernel
-    kernel = GPy.kern.RBF(input_dim=X.shape[1], lengthscale=lengthscale, variance=variance)
-    model = GPy.models.GPRegression(X,Y,kernel)
-    
-    # optimize and plot
-    model.optimize(messages=True,max_f_eval = 100)
-    
+        if data_fusion_data.empty:
+            
+            model = None
+            
+        else:
+            
+            X = data_fusion_data[data_fusion_input_variables] # This is 3D input
+            Y = data_fusion_data[[data_fusion_target_variable]] # Negative value: stable phase. Uncertainty = 0.025 
+            X = X.values # Optimization did not succeed without type conversion.
+            Y = Y.values
+            
+            kernel = GPy.kern.RBF(input_dim=X.shape[1], 
+                                  lengthscale=lengthscale, variance=variance)
+            model = GPy.models.GPRegression(X,Y,kernel)
+            
+            # With small number of datapoints and no bounds on variance, the
+            # model sometimes converged into ridiculous variance values.
+            model.rbf.variance.constrain_bounded(variance*1e-6,variance*1e6)
+            # optimize
+            model.optimize(messages=False,max_f_eval = 500)
     
     return model
     
 def calc_P(points, GP_model, beta = 0.025, midpoint = 0):
     
     #print(points)
-    mean = GP_model.predict_noiseless(points)
-    mean = mean[0] # TO DO: issue here with dimensions?
-    #print(mean)
-    conf_interval = GP_model.predict_quantiles(np.array(points)) # 95% confidence interval by default. TO DO: Do we want to use this for something?
+    if GP_model is not None:
+        mean = GP_model.predict_noiseless(points)
+        mean = mean[0] # TO DO: issue here with dimensions?
+        #print(mean)
+        conf_interval = GP_model.predict_quantiles(np.array(points)) # 95% confidence interval by default. TO DO: Do we want to use this for something?
 
-    propability = 1/(1+np.exp((mean-midpoint)/beta)) # Inverted because the negative Gibbs energies are the ones that are stable.
-    #print(propability)
+        propability = 1/(1+np.exp((mean-midpoint)/beta)) # Inverted because the negative Gibbs energies are the ones that are stable.
+    
+    else:
+        
+        mean = np.zeros(shape = (points.shape[0], 1)) + 0.5
+        conf_interval = [np.zeros(shape = (points.shape[0], 1)),
+                         np.ones(shape = (points.shape[0], 1))]
+        propability= np.ones(shape = (points.shape[0], 1))
+        
     return mean, propability, conf_interval
 
 
-def create_ternary_grid():
+def create_ternary_grid(range_min=0, range_max=1, interval=0.005):
 
-    ### This grid is used for sampling+plotting the posterior mean and std_dv + acq function.
-    a = np.arange(0.0,1.0, 0.005)
+    ### This grid is used for plotting the posterior mean and std_dv + acq function.
+    a = np.arange(range_min, range_max, interval)
     xt, yt, zt = np.meshgrid(a,a,a, sparse=False)
     points = np.transpose([xt.ravel(), yt.ravel(), zt.ravel()])
-    points = points[abs(np.sum(points, axis=1)-1)<0.005]
+    # The x, y, z coordinates need to sum up to 1 in a ternary grid.
+    points = points[abs(np.sum(points, axis=1)-1) < interval]
     
     return points
 
@@ -149,9 +249,9 @@ def plot_surf_mean(points, posterior_mean, lims, axis_scale = 1,
 def plot_surf(points, y_data, norm, cmap = 'RdBu_r', cbar_label = '',
               saveas = 'Triangle_surf'):
 
-    print(y_data.shape, points.shape)
-    print(norm)
-    print(cmap)
+    #print(y_data.shape, points.shape)
+    #print(norm)
+    #print(cmap)
     triangleplot(points, y_data, norm, cmap = cmap,
                  cbar_label = cbar_label, saveas = saveas)
 
@@ -178,7 +278,7 @@ def plot_P(GP_model, beta = 0.025, data_type = 'dft', midpoint = 0):
         saveas_mean = 'P-no-grid'
 
     mean, propability, conf_interval = calc_P(points, GP_model, beta = beta, midpoint = midpoint)
-    print(propability)
+    #print(propability)
     
     #plot_surf_mean(points, propability, lims, axis_scale = 1.0,
     #               cbar_label = cbar_label_mean, saveas = saveas_mean, cmap = 'RdBu')
