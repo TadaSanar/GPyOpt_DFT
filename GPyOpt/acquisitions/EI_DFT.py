@@ -200,7 +200,7 @@ def GP_model(data_fusion_data, data_fusion_target_variable = 'dGmix (ev/f.u.)',
             
             # With small number of datapoints and no bounds on variance, the
             # model sometimes converged into ridiculous variance values.
-            model.rbf.variance.constrain_bounded(variance*1e-6,variance*1e6)
+            model.rbf.variance.constrain_bounded(variance*1e-6,variance*1e6, warning=False)
             # optimize
             model.optimize(messages=False,max_f_eval = 500)
     
