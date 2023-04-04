@@ -25,7 +25,7 @@ class AcquisitionEI(AcquisitionBase):
     def __init__(self, model, space, optimizer=None, cost_withGradients=None, jitter=0.01):
         self.optimizer = optimizer
         super(AcquisitionEI, self).__init__(model, space, optimizer, cost_withGradients=cost_withGradients)
-        self.jitter = jitter
+        self.jitter = 0.1#jitter
 
     @staticmethod
     def fromConfig(model, space, optimizer, cost_withGradients, config):
