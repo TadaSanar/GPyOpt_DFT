@@ -36,7 +36,7 @@ class AcquisitionEI_DFT(AcquisitionBase):
         
         self.optimizer = optimizer
         super(AcquisitionEI_DFT, self).__init__(model, space, optimizer, cost_withGradients=cost_withGradients)
-        self.jitter = 0.01#jitter
+        self.jitter = jitter
         
         if ei_dft_params is None:
             
