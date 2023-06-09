@@ -62,7 +62,8 @@ class GPModel(BOModel):
 
         # --- define model
         noise_var = Y.var()*0.01 if self.noise_var is None else self.noise_var
-
+        #print('Noise_variance: ', noise_var, Y)
+        
         if not self.sparse:
             self.model = GPy.models.GPRegression(X, Y, kernel=kern, noise_var=noise_var, mean_function=self.mean_function)
         else:
