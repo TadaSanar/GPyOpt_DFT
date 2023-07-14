@@ -196,14 +196,19 @@ def GP_model(data_fusion_data, data_fusion_target_variable = 'dGmix (ev/f.u.)',
             
             kernel = GPy.kern.RBF(input_dim=X.shape[1], 
                                   lengthscale=lengthscale, variance=variance)
-            model = GPy.models.GPRegression(X,Y,kernel)
+            
+            # Init value for noise_var, GPy will optimize it further.
+            noise_var = 0.1*Y.var()
+            model = GPy.models.GPRegression(X,Y,kernel, noise_var = noise_var)
+            
+            # --- We make sure we do not get ridiculously small residual noise variance
+            model.Gaussian_noise.constrain_bounded(1e-2, 1e6, warning=False)
             
             # With small number of datapoints and no bounds on variance, the
-            # model sometimes converged into ridiculous variance values.
+            # model sometimes converged into ridiculous kernel variance values.
             model.rbf.variance.constrain_bounded(variance*1e-6,variance*1e6, warning=False)
             # optimize
-            model.optimize(messages=False,max_f_eval = 500)
-    
+            model.optimize(messages=False)
     return model
     
 def calc_P(points, GP_model, beta = 0.025, midpoint = 0):

@@ -110,6 +110,7 @@ class GPModel(BOModel):
         """
         m, v = self._predict(X, False, with_noise)
         # We can take the square root because v is just a diagonal matrix of variances
+        
         return m, np.sqrt(v)
 
     def predict_covariance(self, X, with_noise=True):
