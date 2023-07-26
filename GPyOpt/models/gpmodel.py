@@ -74,7 +74,7 @@ class GPModel(BOModel):
             self.model.Gaussian_noise.constrain_fixed(1e-6, warning=False)
         else:
             # --- We make sure we do not get ridiculously small residual noise variance
-            self.model.Gaussian_noise.constrain_bounded(1e-2, 1e6, warning=False)#(1e-9, 1e6, warning=False) #constrain_positive(warning=False)
+            self.model.Gaussian_noise.constrain_bounded(1e-4, 1e6, warning=False)#(1e-9, 1e6, warning=False) #constrain_positive(warning=False)
 
     def updateModel(self, X_all, Y_all, X_new, Y_new):
         """
