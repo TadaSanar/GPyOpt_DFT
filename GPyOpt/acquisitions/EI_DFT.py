@@ -118,8 +118,8 @@ class AcquisitionEI_DFT(AcquisitionBase):
         _, prob, _ = calc_P(x, self.constraint_model, self.beta, self.midpoint) # Added
         f_acqu = f_acqu * prob # Added
         
-        message = 'Exploitation ' + str(s*u*Phi*prob) + ', exploration ' + str(s*phi*prob) # Added
-        logging.debug(message)
+        #message = 'Exploitation ' + str(s*u*Phi*prob) + ', exploration ' + str(s*phi*prob) # Added
+        #logging.debug(message)
         
         return f_acqu
 
