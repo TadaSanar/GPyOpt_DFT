@@ -14,6 +14,7 @@ from plotting_v2 import triangleplot # Added
 from .base import AcquisitionBase
 from ..util.general import get_quantiles
 
+import logging
 
 
 class AcquisitionEI_DFT(AcquisitionBase):
@@ -98,7 +99,8 @@ class AcquisitionEI_DFT(AcquisitionBase):
             if self.data_fusion_target_variable == 'Yellowness':
                 plot_P(self.constraint_model, beta = self.beta, data_type = 'yellowness', midpoint = self.midpoint)
         else:
-            print('I do not know how to plot this data fusion variable.')
+            message = 'I do not know how to plot this data fusion variable.'
+            logging.error(message)
 
     @staticmethod
     def fromConfig(model, space, optimizer, cost_withGradients, jitter, ei_dft_params, config):
@@ -116,7 +118,9 @@ class AcquisitionEI_DFT(AcquisitionBase):
         _, prob, _ = calc_P(x, self.constraint_model, self.beta, self.midpoint) # Added
         f_acqu = f_acqu * prob # Added
         
-        #print('Exploitation ', s*u*Phi*prob, ', exploration ', s*phi.prob) # Added
+        message = 'Exploitation ' + str(s*u*Phi*prob) + ', exploration ' + str(s*phi*prob) # Added
+        logging.debug(message)
+        
         return f_acqu
 
     def _compute_acq_withGradients(self, x):
@@ -130,7 +134,8 @@ class AcquisitionEI_DFT(AcquisitionBase):
         df_acqu = dsdx * phi - Phi * dmdx
         
         if np.any(np.isnan(x)):
-            print('x contains nan:\n ', x)
+            message = 'x contains nan:\n ' + str(x)
+            logging.error(message)
         
         _, prob, _ = calc_P(x, self.constraint_model, self.beta, self.midpoint) # Added
         
@@ -199,8 +204,10 @@ def GP_model(data_fusion_data, data_fusion_target_variable = 'dGmix (ev/f.u.)',
             
             # Init value for noise_var, GPy will optimize it further.
             noise_var = Y.var()
-            print('Human Gaussian noise variance in data and model input: ', Y.var(), noise_var)
-            print('Human model data:', Y)
+            message = ('Human Gaussian noise variance in data and model input: ' +
+                       str(Y.var()) + ', ' + str(noise_var) + '\n' +
+                       'Human model data:' + str(Y))
+            logging.debug(message)
             model = GPy.models.GPRegression(X,Y,kernel, noise_var = noise_var)
             
             # --- We make sure we do not get ridiculously small residual noise variance
@@ -212,7 +219,9 @@ def GP_model(data_fusion_data, data_fusion_target_variable = 'dGmix (ev/f.u.)',
             # optimize
             model.optimize(messages=False)
             
-            print('Human Gaussian noise variance in model output: ', model.Gaussian_noise.variance[0])
+            message = ('Human Gaussian noise variance in model output: ' + 
+                       str(model.Gaussian_noise.variance[0]))
+            logging.debug(message)
             
     return model
     
@@ -288,83 +297,12 @@ def plot_P(GP_model, beta = 0.025, data_type = 'dft', midpoint = 0):
         saveas_mean = 'P-no-grid'
 
     mean, propability, conf_interval = calc_P(points, GP_model, beta = beta, midpoint = midpoint)
-    #print(propability)
-    
-    #plot_surf_mean(points, propability, lims, axis_scale = 1.0,
-    #               cbar_label = cbar_label_mean, saveas = saveas_mean, cmap = 'RdBu')
     
     minP = np.min(propability)
     maxP = np.max(propability)
         
     return minP, maxP
 
-
-'''def mean_and_propability(x, model):#, variables):
-    mean = model.predict_noiseless(x) # Manual: "This is most likely what you want to use for your predictions."
-    mean = mean[0] # TO DO: issue here with dimensions?
-    conf_interval = model.predict_quantiles(np.array(x)) # 95% confidence interval by default. TO DO: Do we want to use this for something?
-
-    propability = 1/(1+np.exp(mean/0.025)) # Inverted because the negative Gibbs energies are the ones that are stable.
-    
-    return mean, propability, conf_interval
-'''
-
-'''
-# Added the rest of the file.
-def GP_model(files):
-    for i in file_CsFA_2 = files[0]
-    file_FAMA_2 = files[1]
-    file_CsMA_2 = files[2]
-
-    data_CsFA_2 = pd.read_csv(file_CsFA_2)
-    data_FAMA_2 = pd.read_csv(file_FAMA_2)
-    data_CsMA_2 = pd.read_csv(file_CsMA_2)
-
-    data_all = pd.concat([data_CsFA_2, data_FAMA_2, data_CsMA_2])#, data_CsMAFA_2])#, data_Janak]) # This includes Janak's observations. It's either this or the previous row.
-    # TO DO: Newest Bayesian Opt version works for any order of elements. Need
-    # to update also DFT to do that one at some point.
-    variables = ['Cs', 'MA', 'FA']
-    # sample inputs and outputs
-    X = data_all[variables] # This is 3D input
-    Y = data_all[['dGmix (ev/f.u.)']] # Negative value: stable phase. Uncertainty = 0.025 
-    X = X.iloc[:,:].values # Optimization did not succeed without type conversion.
-    Y = Y.iloc[:,:].values
-    # RBF kernel
-    kernel = GPy.kern.RBF(input_dim=3, lengthscale=0.03, variance=0.025)
-    # Logistic kernel --> No!
-    #kernel = GPy.kern.LogisticBasisFuncKernel(input_dim=1, centers=[0, 0.5, 1], active_dims=[0], variance = 0.05) * GPy.kern.LogisticBasisFuncKernel(input_dim=1, centers=[0, 0.5, 1], active_dims=[1], variance = 0.05) * GPy.kern.LogisticBasisFuncKernel(input_dim=1, centers=[0, 0.5, 1], active_dims=[2], variance = 0.05)
-    model = GPy.models.GPRegression(X,Y,kernel)
-    
-    # optimize and plot
-    model.optimize(messages=True,max_f_eval = 100)
-    
-    #print(model)
-    
-    #GP.predict(X) (return mean), and __pass it to a sigmoid (0,1)__ (return), GP.raw_predict
-    
-    return model
-    
-    # This code should return the whole GP model for Gibbs.    
-    # Then, write another function here that will take composition X and model GP
-    # as an input, calculate the predicted mean value of Gibbs using the model, pass
-    # it to a sigmoid (0,1) to transform it to a "propability" and give that one as
-    # an output.
-    
-    
-    # X should be a numpy array containing the suggested composition(s) in the
-    # same order than listed in the variables.
-def mean_and_propability(x, model):#, variables):
-    #if variables != ['Cs', 'FA', 'MA']:
-    #    raise ValueError('The compositions in x do not seem to be in the same order than the model expects.')
-    #print(x)
-    mean = model.predict_noiseless(x) # Manual: "This is most likely what you want to use for your predictions."
-    mean = mean[0] # TO DO: issue here with dimensions?
-    conf_interval = model.predict_quantiles(np.array(x)) # 95% confidence interval by default. TO DO: Do we want to use this for something?
-
-    propability = 1/(1+np.exp(mean/0.025)) # Inverted because the negative Gibbs energies are the ones that are stable.
-    #print(propability)
-    return mean, propability, conf_interval
-'''
 # For testing of GP_model() and mean_and_propability():
 '''
 model = GP_model()
