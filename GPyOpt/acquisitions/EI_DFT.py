@@ -207,7 +207,7 @@ def GP_model(data_fusion_data, data_fusion_target_variable = 'dGmix (ev/f.u.)',
             message = ('Human Gaussian noise variance in data and model input: ' +
                        str(Y.var()) + ', ' + str(noise_var) + '\n' +
                        'Human model data:' + str(Y))
-            logging.log(11, message)
+            logging.log(21, message)
             model = GPy.models.GPRegression(X,Y,kernel, noise_var = noise_var)
             
             # --- We make sure we do not get ridiculously small residual noise variance
@@ -221,7 +221,7 @@ def GP_model(data_fusion_data, data_fusion_target_variable = 'dGmix (ev/f.u.)',
             
             message = ('Human Gaussian noise variance in model output: ' + 
                        str(model.Gaussian_noise.variance[0]))
-            logging.log(11, message)
+            logging.log(21, message)
             
     return model
     
