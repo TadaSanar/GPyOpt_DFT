@@ -115,11 +115,11 @@ class AcquisitionEI_DFT(AcquisitionBase):
         phi, Phi, u = get_quantiles(self.jitter, fmin, m, s)
         f_acqu = s * (u * Phi + phi)
         
-        _, prob, _ = calc_P(x, self.constraint_model, self.beta, self.midpoint) # Added
+        _, prob = calc_P(x, self.constraint_model, self.beta, self.midpoint) # Added
         f_acqu = f_acqu * prob # Added
         
-        #message = 'Exploitation ' + str(s*u*Phi*prob) + ', exploration ' + str(s*phi*prob) # Added
-        #logging.debug(message)
+        message = 'Exploitation ' + str(s*u*Phi*prob) + ', exploration ' + str(s*phi*prob) # Added
+        logging.debug(message)
         
         return f_acqu
 
@@ -137,7 +137,7 @@ class AcquisitionEI_DFT(AcquisitionBase):
             message = 'x contains nan:\n ' + str(x)
             logging.error(message)
         
-        _, prob, _ = calc_P(x, self.constraint_model, self.beta, self.midpoint) # Added
+        _, prob = calc_P(x, self.constraint_model, self.beta, self.midpoint) # Added
         
         #print('x='+str(x)+', acqu='+str(f_acqu)+', grad_acqu='+str(df_acqu),
         #      ', P=' + str(prob))
@@ -168,9 +168,9 @@ def calc_gradient_of_P(x, constraint_model, beta, midpoint, lengthscale):
         x_l[:,i] = x_l[:,i] - delta_x
         x_u[:,i] = x_u[:,i] + delta_x
         
-        _, p_l, _ = calc_P(x_l, constraint_model, beta, midpoint)
-        #_, p_c, _ = calc_P(x, constraint_model, beta, midpoint)
-        _, p_u, _ = calc_P(x_u, constraint_model, beta, midpoint)
+        _, p_l = calc_P(x_l, constraint_model, beta, midpoint)
+        #_, p_c = calc_P(x, constraint_model, beta, midpoint)
+        _, p_u = calc_P(x_u, constraint_model, beta, midpoint)
         
         g[:,i] =  np.ravel((p_u - p_l)/(2*delta_x))
         
@@ -207,7 +207,7 @@ def GP_model(data_fusion_data, data_fusion_target_variable = 'dGmix (ev/f.u.)',
             message = ('Human Gaussian noise variance in data and model input: ' +
                        str(Y.var()) + ', ' + str(noise_var) + '\n' +
                        'Human model data:' + str(Y))
-            logging.debug(message)
+            logging.log(11, message)
             model = GPy.models.GPRegression(X,Y,kernel, noise_var = noise_var)
             
             # --- We make sure we do not get ridiculously small residual noise variance
@@ -221,7 +221,7 @@ def GP_model(data_fusion_data, data_fusion_target_variable = 'dGmix (ev/f.u.)',
             
             message = ('Human Gaussian noise variance in model output: ' + 
                        str(model.Gaussian_noise.variance[0]))
-            logging.debug(message)
+            logging.log(11, message)
             
     return model
     
@@ -232,8 +232,8 @@ def calc_P(points, GP_model, beta = 0.025, midpoint = 0):
         mean = GP_model.predict_noiseless(points)
         mean = mean[0] # TO DO: issue here with dimensions?
         #print(mean)
-        conf_interval = GP_model.predict_quantiles(np.array(points)) # 95% confidence interval by default. TO DO: Do we want to use this for something?
-
+        #conf_interval = GP_model.predict_quantiles(np.array(points)) # 95% confidence interval by default. TO DO: Do we want to use this for something?
+        conf_interval = None
         propability = 1/(1+np.exp((mean-midpoint)/beta)) # Inverted because the negative Gibbs energies are the ones that are stable.
     
     else:
@@ -243,7 +243,7 @@ def calc_P(points, GP_model, beta = 0.025, midpoint = 0):
                          np.ones(shape = (points.shape[0], 1))]
         propability= np.ones(shape = (points.shape[0], 1))
         
-    return mean, propability, conf_interval
+    return mean, propability#, conf_interval
 
 
 def create_ternary_grid(range_min=0, range_max=1, interval=0.005):
