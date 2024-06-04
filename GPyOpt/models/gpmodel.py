@@ -56,12 +56,21 @@ class GPModel(BOModel):
         self.input_dim = X.shape[1]
         if self.kernel is None:
             kern = GPy.kern.Matern52(self.input_dim, variance=1., ARD=self.ARD) #+ GPy.kern.Bias(self.input_dim)
+            #print('modified kernel')
         else:
-            kern = self.kernel
+            kern = self.kernel(self.input_dim, variance=1., ARD=self.ARD)
             self.kernel = None
+            #print('modified kernel')
 
         # --- define model
-        noise_var = Y.var()*0.01 if self.noise_var is None else self.noise_var
+        if self.exact_feval:
+            
+            noise_var = 1e-12 if self.noise_var is None else self.noise_var
+            
+        else:
+            
+            noise_var = Y.var()*0.01 if self.noise_var is None else self.noise_var
+            
         #print('Noise_variance: ', noise_var, Y)
         
         if not self.sparse:
@@ -71,10 +80,10 @@ class GPModel(BOModel):
 
         # --- restrict variance if exact evaluations of the objective
         if self.exact_feval:
-            self.model.Gaussian_noise.constrain_fixed(1e-6, warning=False)
+            self.model.Gaussian_noise.constrain_fixed(1e-12, warning=False) #A used to be 10e-6
         else:
             # --- We make sure we do not get ridiculously small residual noise variance
-            self.model.Gaussian_noise.constrain_bounded(1e-4, 1e6, warning=False)#(1e-9, 1e6, warning=False) #constrain_positive(warning=False)
+            self.model.Gaussian_noise.constrain_bounded(1e-4, 1e6, warning=False)#self.model.Gaussian_noise.fix(noise_var) #A self.model.Gaussian_noise.constrain_bounded(1e-4, 1e6, warning=False)#(1e-9, 1e6, warning=False) #constrain_positive(warning=False)
 
     def updateModel(self, X_all, Y_all, X_new, Y_new):
         """

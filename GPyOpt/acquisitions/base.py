@@ -36,7 +36,7 @@ class AcquisitionBase(object):
         """
         f_acqu = self._compute_acq(x)
         cost_x, _ = self.cost_withGradients(x)
-        return -(f_acqu*self.space.indicator_constraints(x))/cost_x
+        return -(f_acqu/cost_x) - self.space.indicator_constraints(x) #-(f_acqu*self.space.indicator_constraints(x))/cost_x - self.space.indicator_constraints(x) #A -(f_acqu*self.space.indicator_constraints(x))/cost_x #A 
 
 
     def acquisition_function_withGradients(self, x):

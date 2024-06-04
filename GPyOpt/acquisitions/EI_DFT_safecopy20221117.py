@@ -14,7 +14,6 @@ from plotting_v2 import triangleplot # Added
 from .base import AcquisitionBase
 from ..util.general import get_quantiles
 
-#import logging
 
 
 class AcquisitionEI_DFT(AcquisitionBase):
@@ -33,99 +32,29 @@ class AcquisitionEI_DFT(AcquisitionBase):
 
     analytical_gradient_prediction = True
 
-    def __init__(self, model, space, optimizer=None, cost_withGradients=None, jitter=0.01, ei_dft_params=None):
-        
+    def __init__(self, model, space, data_fusion_data, optimizer=None, cost_withGradients=None, data_fusion_target_variable=None, jitter=0.01, lengthscale = 0.03, variance = 2, beta = 0.025, midpoint = 0, data_fusion_input_variables = None):
         self.optimizer = optimizer
+        self.data_fusion_target_variable = data_fusion_target_variable
+        self.data_fusion_data = data_fusion_data
         super(AcquisitionEI_DFT, self).__init__(model, space, optimizer, cost_withGradients=cost_withGradients)
         self.jitter = jitter
-        #print(jitter)
-        if ei_dft_params is None:
-            
-            # Default values.
-            
-            ei_dft_params = {'df_data': None,
-                         'df_target_var': None,
-                         'df_input_var': None,
-                         'gp_lengthscale': 0.03,
-                         'gp_variance': 2,
-                         'p_beta': 0.025,
-                         'p_midpoint': 0,
-                         'df_model': None
-                         }
-        
-        if 'df_target_var' in ei_dft_params:
-            self.data_fusion_target_variable = ei_dft_params['df_target_var']
-        else:
-            self.data_fusion_target_variable = None
-        
-        if 'df_input_var' in ei_dft_params:
-            self.data_fusion_input_variables = ei_dft_params['df_input_var']
-        else:
-            self.data_fusion_input_variables = None
-        
-        if 'df_model' in ei_dft_params:
-            
-            # GPY GPRegression model.
-            self.constraint_model = ei_dft_params['df_model']
-            # Data is not used for anything if the model already exists.
-            self.data_fusion_data = None
-            
-        else:
-            
-            if 'df_data' in ei_dft_params:
-                self.data_fusion_data = ei_dft_params['df_data']
-            else:
-                self.data_fusion_data = None
-            
-            # Initialize to the given values.
-            if 'gp_lengthscale' in ei_dft_params:
-                self.lengthscale = ei_dft_params['gp_lengthscale']
-            else:
-                self.lengthscale = 0.03
-                
-            if 'gp_variance' in ei_dft_params:
-                self.variance = ei_dft_params['gp_variance']
-            else:
-                self.variance = 2
-
-            self.constraint_model = GP_model(self.data_fusion_data,
-                                             data_fusion_target_variable = self.data_fusion_target_variable,
-                                             lengthscale = self.lengthscale,
-                                             variance = self.variance, 
-                                             data_fusion_input_variables = self.data_fusion_input_variables)  # Added
-        
-        # Let's update with the fitted model hyperparameter values.
-        self.lengthscale = self.constraint_model.kern.lengthscale
-        self.variance = self.constraint_model.kern.variance
-        
-        if 'p_beta' in ei_dft_params:
-            self.beta = ei_dft_params['p_beta']
-        else:
-            self.beta = 0.025
-
-        if 'p_midpoint' in ei_dft_params:
-            self.midpoint = ei_dft_params['p_midpoint']
-        else:
-            self.beta = 0
-
-            
-            
-        if len(self.data_fusion_input_variables) == 3:
-            
-            # Plot the data.
-            if self.data_fusion_target_variable == 'dGmix (ev/f.u.)':
+        self.variance = variance
+        self.lengthscale = lengthscale
+        self.beta = beta
+        self.midpoint = midpoint
+        self.data_fusion_input_variables = data_fusion_input_variables
+        self.constraint_model = GP_model(data_fusion_data, data_fusion_target_variable = data_fusion_target_variable, lengthscale = lengthscale, variance = variance, data_fusion_input_variables = data_fusion_input_variables)  # Added
+        if len(data_fusion_input_variables) == 3:
+            if data_fusion_target_variable == 'dGmix (ev/f.u.)':
                 plot_P(self.constraint_model, beta = self.beta, data_type = 'dft', midpoint = self.midpoint)
-            if self.data_fusion_target_variable == 'Yellowness':
+            if data_fusion_target_variable == 'Yellowness':
                 plot_P(self.constraint_model, beta = self.beta, data_type = 'yellowness', midpoint = self.midpoint)
-        
         else:
-            
-            message = 'I do not know how to plot this data fusion variable.'
-            #logging.error(message)
+            print('I do not know how to plot this data fusion variable.')
 
     @staticmethod
-    def fromConfig(model, space, optimizer, cost_withGradients, jitter, ei_dft_params, config):
-        return AcquisitionEI_DFT(model, space, optimizer, cost_withGradients, jitter)
+    def fromConfig(model, space, data_fusion_data, optimizer, cost_withGradients, data_fusion_target_variable, jitter, lengthscale, variance, beta, midpoint, data_fusion_input_variables, config):
+        return AcquisitionEI_DFT(model, space, data_fusion_data, optimizer, cost_withGradients, data_fusion_target_variable, jitter, lengthscale, variance, beta, midpoint, data_fusion_input_variables)#, jitter=config['jitter'])
 
     def _compute_acq(self, x):
         """
@@ -136,12 +65,10 @@ class AcquisitionEI_DFT(AcquisitionBase):
         phi, Phi, u = get_quantiles(self.jitter, fmin, m, s)
         f_acqu = s * (u * Phi + phi)
         
-        _, prob = calc_P(x, self.constraint_model, self.beta, self.midpoint) # Added
+        _, prob, _ = calc_P(x, self.constraint_model, self.beta, self.midpoint) # Added
         f_acqu = f_acqu * prob # Added
         
-        message = 'Exploitation ' + str(s*u*Phi*prob) + ', exploration ' + str(s*phi*prob) # Added
-        #logging.debug(message)
-        
+        #print('Exploitation ', s*u*Phi*prob, ', exploration ', s*phi.prob) # Added
         return f_acqu
 
     def _compute_acq_withGradients(self, x):
@@ -155,10 +82,9 @@ class AcquisitionEI_DFT(AcquisitionBase):
         df_acqu = dsdx * phi - Phi * dmdx
         
         if np.any(np.isnan(x)):
-            message = 'x contains nan:\n ' + str(x)
-            #logging.error(message)
+            print('x contains nan:\n ', x)
         
-        _, prob = calc_P(x, self.constraint_model, self.beta, self.midpoint) # Added
+        _, prob, _ = calc_P(x, self.constraint_model, self.beta, self.midpoint) # Added
         
         #print('x='+str(x)+', acqu='+str(f_acqu)+', grad_acqu='+str(df_acqu),
         #      ', P=' + str(prob))
@@ -189,9 +115,9 @@ def calc_gradient_of_P(x, constraint_model, beta, midpoint, lengthscale):
         x_l[:,i] = x_l[:,i] - delta_x
         x_u[:,i] = x_u[:,i] + delta_x
         
-        _, p_l = calc_P(x_l, constraint_model, beta, midpoint)
-        #_, p_c = calc_P(x, constraint_model, beta, midpoint)
-        _, p_u = calc_P(x_u, constraint_model, beta, midpoint)
+        _, p_l, _ = calc_P(x_l, constraint_model, beta, midpoint)
+        #_, p_c, _ = calc_P(x, constraint_model, beta, midpoint)
+        _, p_u, _ = calc_P(x_u, constraint_model, beta, midpoint)
         
         g[:,i] =  np.ravel((p_u - p_l)/(2*delta_x))
         
@@ -199,9 +125,7 @@ def calc_gradient_of_P(x, constraint_model, beta, midpoint, lengthscale):
         
 
 # Added the rest of the file on 2021/11/02.
-def GP_model(data_fusion_data, data_fusion_target_variable = 'dGmix (ev/f.u.)', 
-             lengthscale = 0.03, variance = 2, noise_variance = None,
-             data_fusion_input_variables = ['CsPbI', 'MAPbI', 'FAPbI']):
+def GP_model(data_fusion_data, data_fusion_target_variable = 'dGmix (ev/f.u.)', lengthscale = 0.03, variance = 2, data_fusion_input_variables = ['CsPbI', 'MAPbI', 'FAPbI']):
     
     if data_fusion_data is None:
         
@@ -220,71 +144,15 @@ def GP_model(data_fusion_data, data_fusion_target_variable = 'dGmix (ev/f.u.)',
             X = X.values # Optimization did not succeed without type conversion.
             Y = Y.values
             
-            # Init value for noise_var, GPy will optimize it further.
-            noise_var = noise_variance
-            noise_var_limit = 1e-12
-            
-            if (noise_var is None) or (noise_var <= 0):
-                
-                noise_var = 0.01*Y.var()
-                
-                # Noise_variance should not be zero.
-                if noise_var == 0:
-                    
-                    noise_var = noise_var_limit
-                
-            #message = ('Human Gaussian noise variance in data and model input: ' +
-            #           str(Y.var()) + ', ' + str(noise_var) + '\n' +
-            #           'Human model data:' + str(Y))
-            #print(message)
-            #logging.log(21, message)
-            
-            # Set hyperparameter initial guesses.
-            
-            kernel_var = variance
-            
-            if (kernel_var is None) or (kernel_var <= 0):
-                
-                kernel_var = Y.var()
-                
-                if kernel_var == 0: # Only constant value(s)
-                    
-                    kernel_var = 1
-                
-            kernel_ls = lengthscale
-            
-            if (kernel_ls is None) or (kernel_ls <= 0):
-                
-                kernel_ls = X.max()-X.min()
-                
-                if kernel_ls == 0: # Only constant value(s)
-                    
-                    kernel_ls = 1
-                    
-            # Define the kernel and model.
-            
-            kernel = GPy.kern.Matern52(input_dim=X.shape[1], 
-                                  lengthscale=kernel_ls, variance=kernel_var)
-            
-            model = GPy.models.GPRegression(X,Y,kernel, noise_var = noise_var)
-            
-            # --- We make sure we do not get ridiculously small residual noise variance
-            # The upper bound is set to the noise level that corresponds to the
-            # maximum Y value in the dataset.
-            model.Gaussian_noise.constrain_bounded(noise_var_limit, noise_var + (Y.max())**2, warning=False)
+            kernel = GPy.kern.RBF(input_dim=X.shape[1], lengthscale=lengthscale, variance=variance)
+            model = GPy.models.GPRegression(X,Y,kernel)
             
             # With small number of datapoints and no bounds on variance, the
-            # model sometimes converged into ridiculous kernel variance values.
-            model.Mat52.variance.constrain_bounded(variance*1e-12, variance + (Y.max())**2, 
-                                                 warning=False)
-            
+            # model sometimes converged into ridiculous variance values.
+            model.rbf.variance.constrain_bounded(variance*1e-6,variance*1e6)
             # optimize
-            model.optimize_restarts(max_iters = 1000, num_restarts=5)
-            
-            #message = ('Human Gaussian noise variance in model output: ' + 
-            #           str(model.Gaussian_noise.variance[0]))
-            #logging.log(21, message)
-            
+            model.optimize(messages=False,max_f_eval = 500)
+    
     return model
     
 def calc_P(points, GP_model, beta = 0.025, midpoint = 0):
@@ -294,18 +162,18 @@ def calc_P(points, GP_model, beta = 0.025, midpoint = 0):
         mean = GP_model.predict_noiseless(points)
         mean = mean[0] # TO DO: issue here with dimensions?
         #print(mean)
-        #conf_interval = GP_model.predict_quantiles(np.array(points)) # 95% confidence interval by default. TO DO: Do we want to use this for something?
-        conf_interval = None
+        conf_interval = GP_model.predict_quantiles(np.array(points)) # 95% confidence interval by default. TO DO: Do we want to use this for something?
+
         propability = 1/(1+np.exp((mean-midpoint)/beta)) # Inverted because the negative Gibbs energies are the ones that are stable.
     
     else:
         
         mean = np.zeros(shape = (points.shape[0], 1)) + 0.5
-        #conf_interval = [np.zeros(shape = (points.shape[0], 1)),
-        #                 np.ones(shape = (points.shape[0], 1))]
+        conf_interval = [np.zeros(shape = (points.shape[0], 1)),
+                         np.ones(shape = (points.shape[0], 1))]
         propability= np.ones(shape = (points.shape[0], 1))
         
-    return mean, propability#, conf_interval
+    return mean, propability, conf_interval
 
 
 def create_ternary_grid(range_min=0, range_max=1, interval=0.005):
@@ -359,12 +227,83 @@ def plot_P(GP_model, beta = 0.025, data_type = 'dft', midpoint = 0):
         saveas_mean = 'P-no-grid'
 
     mean, propability, conf_interval = calc_P(points, GP_model, beta = beta, midpoint = midpoint)
+    #print(propability)
+    
+    #plot_surf_mean(points, propability, lims, axis_scale = 1.0,
+    #               cbar_label = cbar_label_mean, saveas = saveas_mean, cmap = 'RdBu')
     
     minP = np.min(propability)
     maxP = np.max(propability)
         
     return minP, maxP
 
+
+'''def mean_and_propability(x, model):#, variables):
+    mean = model.predict_noiseless(x) # Manual: "This is most likely what you want to use for your predictions."
+    mean = mean[0] # TO DO: issue here with dimensions?
+    conf_interval = model.predict_quantiles(np.array(x)) # 95% confidence interval by default. TO DO: Do we want to use this for something?
+
+    propability = 1/(1+np.exp(mean/0.025)) # Inverted because the negative Gibbs energies are the ones that are stable.
+    
+    return mean, propability, conf_interval
+'''
+
+'''
+# Added the rest of the file.
+def GP_model(files):
+    for i in file_CsFA_2 = files[0]
+    file_FAMA_2 = files[1]
+    file_CsMA_2 = files[2]
+
+    data_CsFA_2 = pd.read_csv(file_CsFA_2)
+    data_FAMA_2 = pd.read_csv(file_FAMA_2)
+    data_CsMA_2 = pd.read_csv(file_CsMA_2)
+
+    data_all = pd.concat([data_CsFA_2, data_FAMA_2, data_CsMA_2])#, data_CsMAFA_2])#, data_Janak]) # This includes Janak's observations. It's either this or the previous row.
+    # TO DO: Newest Bayesian Opt version works for any order of elements. Need
+    # to update also DFT to do that one at some point.
+    variables = ['Cs', 'MA', 'FA']
+    # sample inputs and outputs
+    X = data_all[variables] # This is 3D input
+    Y = data_all[['dGmix (ev/f.u.)']] # Negative value: stable phase. Uncertainty = 0.025 
+    X = X.iloc[:,:].values # Optimization did not succeed without type conversion.
+    Y = Y.iloc[:,:].values
+    # RBF kernel
+    kernel = GPy.kern.RBF(input_dim=3, lengthscale=0.03, variance=0.025)
+    # Logistic kernel --> No!
+    #kernel = GPy.kern.LogisticBasisFuncKernel(input_dim=1, centers=[0, 0.5, 1], active_dims=[0], variance = 0.05) * GPy.kern.LogisticBasisFuncKernel(input_dim=1, centers=[0, 0.5, 1], active_dims=[1], variance = 0.05) * GPy.kern.LogisticBasisFuncKernel(input_dim=1, centers=[0, 0.5, 1], active_dims=[2], variance = 0.05)
+    model = GPy.models.GPRegression(X,Y,kernel)
+    
+    # optimize and plot
+    model.optimize(messages=True,max_f_eval = 100)
+    
+    #print(model)
+    
+    #GP.predict(X) (return mean), and __pass it to a sigmoid (0,1)__ (return), GP.raw_predict
+    
+    return model
+    
+    # This code should return the whole GP model for Gibbs.    
+    # Then, write another function here that will take composition X and model GP
+    # as an input, calculate the predicted mean value of Gibbs using the model, pass
+    # it to a sigmoid (0,1) to transform it to a "propability" and give that one as
+    # an output.
+    
+    
+    # X should be a numpy array containing the suggested composition(s) in the
+    # same order than listed in the variables.
+def mean_and_propability(x, model):#, variables):
+    #if variables != ['Cs', 'FA', 'MA']:
+    #    raise ValueError('The compositions in x do not seem to be in the same order than the model expects.')
+    #print(x)
+    mean = model.predict_noiseless(x) # Manual: "This is most likely what you want to use for your predictions."
+    mean = mean[0] # TO DO: issue here with dimensions?
+    conf_interval = model.predict_quantiles(np.array(x)) # 95% confidence interval by default. TO DO: Do we want to use this for something?
+
+    propability = 1/(1+np.exp(mean/0.025)) # Inverted because the negative Gibbs energies are the ones that are stable.
+    #print(propability)
+    return mean, propability, conf_interval
+'''
 # For testing of GP_model() and mean_and_propability():
 '''
 model = GP_model()
