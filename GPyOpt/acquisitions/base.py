@@ -36,7 +36,7 @@ class AcquisitionBase(object):
         """
         f_acqu = self._compute_acq(x)
         cost_x, _ = self.cost_withGradients(x)
-        return -(f_acqu/cost_x) - self.space.indicator_constraints(x) #-(f_acqu*self.space.indicator_constraints(x))/cost_x - self.space.indicator_constraints(x) #A -(f_acqu*self.space.indicator_constraints(x))/cost_x #A 
+        return -(f_acqu*self.space.indicator_constraints(x))/cost_x #-(f_acqu/cost_x) - self.space.indicator_constraints(x) #A This is my previous cost that caused the search to go outside triangle every now and then with high noise.  -(f_acqu*self.space.indicator_constraints(x))/cost_x - self.space.indicator_constraints(x) #A -(f_acqu*self.space.indicator_constraints(x))/cost_x #A 
 
 
     def acquisition_function_withGradients(self, x):
@@ -47,6 +47,7 @@ class AcquisitionBase(object):
         cost_x, cost_grad_x = self.cost_withGradients(x)
         f_acq_cost = f_acqu/cost_x
         df_acq_cost = (df_acqu*cost_x - f_acqu*cost_grad_x)/(cost_x**2)
+        #print('Old constraint version used.') #A
         return -f_acq_cost*self.space.indicator_constraints(x), -df_acq_cost*self.space.indicator_constraints(x)
 
     def optimize(self, duplicate_manager=None):

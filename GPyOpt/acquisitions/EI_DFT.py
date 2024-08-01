@@ -296,7 +296,7 @@ def calc_P(points, GP_model, beta = 0.025, midpoint = 0):
         #print(mean)
         #conf_interval = GP_model.predict_quantiles(np.array(points)) # 95% confidence interval by default. TO DO: Do we want to use this for something?
         conf_interval = None
-        propability = 1/(1+np.exp((mean-midpoint)/beta)) # Inverted because the negative Gibbs energies are the ones that are stable.
+        propability = inv_sigmoid(mean, midpoint, beta)
     
     else:
         
@@ -307,6 +307,13 @@ def calc_P(points, GP_model, beta = 0.025, midpoint = 0):
         
     return mean, propability#, conf_interval
 
+def inv_sigmoid(mean, midpoint, beta):
+    
+    # Inverted because the negative Gibbs energies are the ones that are stable.
+    f = 1/(1+np.exp((mean-midpoint)/beta))
+    
+    return f
+    
 
 def create_ternary_grid(range_min=0, range_max=1, interval=0.005):
 
